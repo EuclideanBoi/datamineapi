@@ -32,8 +32,8 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS api_users (
-            uid integer PRIMARY KEY,
-            api_key CHAR(48) UNIQUE NOT NULL,
+            uid integer{autoinc} PRIMARY KEY,
+            api_key_hash CHAR(97) UNIQUE NOT NULL,
             role_id integer REFERENCES roles(role_id) NOT NULL,
             issued_time bigint NOT NULL,
             revoked boolean NOT NULL,
@@ -93,7 +93,7 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS player_events (
-            event_id integer PRIMARY KEY,
+            event_id integer{autoinc} PRIMARY KEY,
             mc_uuid uuid REFERENCES players(mc_uuid) NOT NULL,
             type_id integer REFERENCES player_event_types(type_id) NOT NULL,
             username VARCHAR(16),
@@ -103,7 +103,7 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS chat_messages (
-            message_id integer PRIMARY KEY,
+            message_id integer{autoinc} PRIMARY KEY,
             mc_uuid uuid REFERENCES players(mc_uuid) NOT NULL,
             message text NOT NULL,
             time bigint NOT NULL
@@ -111,7 +111,7 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS commands (
-            command_id integer PRIMARY KEY,
+            command_id integer{autoinc} PRIMARY KEY,
             mc_uuid uuid REFERENCES players(mc_uuid) NOT NULL,
             command text NOT NULL,
             successful bool NOT NULL,
@@ -121,7 +121,7 @@ tables = [
 ]
 
 indices = [
-    """CREATE UNIQUE INDEX idx_api_key ON api_users(api_key);""",
+    """CREATE UNIQUE INDEX idx_api_uid ON api_users(uid);""",
     """CREATE UNIQUE INDEX idx_web_username ON web_users(username);""",
     """CREATE INDEX idx_event_uuid ON player_events(mc_uuid);""",
     """CREATE INDEX idx_chat_uuid ON chat_messages(mc_uuid);""",
@@ -167,15 +167,18 @@ check_exists = """SELECT string_value FROM config WHERE field_name = 'db_schema_
 
 api_new_user = """
             INSERT INTO api_users (
-                api_key,
+                api_key_hash,
                 issued_time,
                 revoked,
+                role_id,
                 expires,
                 expired,
                 expiration_time
             ) VALUES
-            ({wc}, {wc}, {wc}, {wc}, {wc}, {wc});
+            ({wc}, {wc}, {wc}, {wc}, {wc}, {wc}, {wc});
         """
+
+api_last_user = """SELECT uid from api_users ORDER BY uid DESC LIMIT 1;"""
 
 web_user_query = """
             SELECT * FROM web_users WHERE username = ({wc});

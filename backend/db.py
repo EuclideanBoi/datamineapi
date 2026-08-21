@@ -34,8 +34,6 @@ class Database():
             self.autoincrement = ""
             self.wildcard = "?"
 
-        # check_exists = """SELECT string_value FROM config WHERE field_name = 'db_schema_version';"""
-
         try:
             with self.engine.begin() as conn:
                 result = conn.exec_driver_sql(schema.check_exists)
@@ -45,7 +43,6 @@ class Database():
             self.create_tables()
     
     def create_tables(self):
-        # from backend.schema import tables, indices, init_values
         try:
             with self.engine.begin() as conn:
                 for table in schema.tables:
@@ -63,47 +60,20 @@ class Database():
 
     def create_api_user(self, expires = False, expiration_period = 30):
         unhashed_key = base64.urlsafe_b64encode(secrets.token_bytes(36)).decode("ascii")
-        # hashed_key = ph.hash(unhashed_key)
-        timestamp = int(datetime.datetime.now().timestamp())
+        hashed_key = ph.hash(unhashed_key)
+        timestamp = int(datetime.now().timestamp())
         expiration_time = timestamp + (expiration_period * 24 * 60 * 60)
 
-        '''new_user = """
-            INSERT INTO api_users (
-                api_key,
-                issued_time,
-                revoked,
-                expires,
-                expired,
-                expiration_time
-            ) VALUES
-            (?, ?, ?, ?, ?, ?);
-        """'''
-
-        #try:
         with self.engine.begin() as conn:
-            result = conn.exec(schema.api_new_user.format(wc=self.wildcard), (unhashed_key, timestamp, False, expires, False, expiration_time))
+            result = conn.exec_driver_sql(schema.api_new_user.format(wc=self.wildcard), (hashed_key, timestamp, False, 3, expires, False, expiration_time))
+            new_uid = conn.exec_driver_sql(schema.api_last_user).fetchone()[0]
             conn.commit()
         self.logger.info("API user registered")
-        #except:
-        #    raise Exception("Registration failure!")
         
-        return unhashed_key
+        return (str(new_uid)+ "~" + unhashed_key)
     
     def create_web_user(self, username: str, password: str, role_id: int, enabled: bool):
         password_hash = ph.hash(password)
-
-        '''check_user = """
-            SELECT username FROM web_users WHERE username = (%s);
-        """'''
-        
-        '''new_user = """
-            INSERT INTO web_users (
-                username,
-                password_hash,
-                role_id,
-                enabled
-            ) VALUES (?, ?, ?, ?);
-        """'''
 
         with self.engine.begin() as conn:
             result = conn.exec_driver_sql(schema.web_user_query.format(wc=self.wildcard), (username,))
@@ -120,46 +90,34 @@ class Database():
         """'''
 
     def login(self, username: str, password: str, ip: str):
-        '''user_query = """
-            SELECT * FROM web_users WHERE username = ?;
-        """
-        log_insert = """
-            INSERT INTO web_events (
-                uid,
-                type_id,
-                time,
-                ip_address
-            ) VALUES (?, ?, ?, ?);
-        """'''
-
         try:
             with self.engine.begin() as conn:
                 result = conn.exec_driver_sql(schema.web_user_query.format(wc=self.wildcard), (username,))
                 data = result.fetchone()
                 if data is None:
-                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (-1, 2, "Nonexistent Account", int(datetime.now().timestamp() * 1000), ip))
+                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (-1, 2, "Nonexistent Account", int(datetime.now().timestamp()), ip))
                     conn.commit()
                     return False
                 
                 if data[4] == 0:
-                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 2, "Account Disabled", int(datetime.now().timestamp() * 1000), ip))
+                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 2, "Account Disabled", int(datetime.now().timestamp()), ip))
                     conn.commit()
                     return False
                 
                 if check_password(data[2], password):
-                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 1, None, int(datetime.now().timestamp() * 1000), ip))
+                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 1, None, int(datetime.now().timestamp()), ip))
                     conn.commit()
                     token = base64.urlsafe_b64encode(secrets.token_bytes(36)).decode("ascii")
                     session = Session(data[0], data[1], token, data[3])
                     self.sessions[token] = session
                     return session
                 
-                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 2, "Wrong Password", int(datetime.now().timestamp() * 1000), ip))
+                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 2, "Wrong Password", int(datetime.now().timestamp()), ip))
                 conn.commit()
                 return False
         except:
             with self.engine.begin() as conn:
-                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (-1, 2, "Server Error", int(datetime.now().timestamp() * 1000), ip))
+                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (-1, 2, "Server Error", int(datetime.now().timestamp()), ip))
                 conn.commit()
             return False
     
@@ -173,7 +131,7 @@ class Database():
         if session is not None:
             del self.sessions[token]
             with self.engine.begin() as conn:
-                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (session.uid, 3, None, int(datetime.now().timestamp() * 1000), ip))
+                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (session.uid, 3, None, int(datetime.now().timestamp()), ip))
                 conn.commit()
             return True
         return False

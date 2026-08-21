@@ -29,4 +29,13 @@ def api_blueprint(db: Database, app):
             return jsonify({'Status': "Success"}), 200
         return jsonify({'Status': "Error"}), 401
     
+    @api_bp.route('/api/create-api-user', methods=['POST'])
+    def create_api_user():
+        data = request.get_json()
+        token = data.get('token')
+        if db.check_token(token): # TODO: ACL CHECK
+            result = db.create_api_user()
+            return jsonify({'Status': "Success", 'Key': result}), 200
+        return jsonify({'Status': "Invalid token"}), 401
+
     return api_bp
