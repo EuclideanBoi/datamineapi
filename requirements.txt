@@ -1,0 +1,10 @@
+Flask
+Flask-Restful
+Flask-Login
+Flask-SQLAlchemy
+SQLAlchemy
+argon2-cffi
+gunicorn
+python-dotenv
+Flask-SocketIO
+Flask-CORS
