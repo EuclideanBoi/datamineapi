@@ -19,7 +19,15 @@ def api_blueprint(db: Database, app):
         password = data.get('password')
         login_result = db.login(username, password, request.environ.get('HTTP_X_REAL_IP', request.remote_addr))
         if login_result is not False:
-            return jsonify({'Status': "Success", 'Username': username}), 200
+            return jsonify({'Status': "Success", 'UID': login_result.uid, 'Token': login_result.session_token}), 200
+        return jsonify({'Status': "Error"}), 401
+    
+    @api_bp.route('/api/logout', methods=['POST'])
+    def logout():
+        data = request.get_json()
+        token = data.get('token')
+        if db.logout(token, request.environ.get('HTTP_X_REAL_IP', request.remote_addr)):
+            return jsonify({'Status': "Success"}), 200
         return jsonify({'Status': "Error"}), 401
     
     return api_bp

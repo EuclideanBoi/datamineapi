@@ -1,42 +1,53 @@
 import sqlalchemy as sa
+import backend.schema as schema
 from datetime import datetime
 from argon2 import PasswordHasher
-from flask_login import UserMixin
+# from flask_login import UserMixin
 import base64
 import secrets
 
 ph = PasswordHasher()
 
-class User(UserMixin):
-    def __init__(self, uid, username, role_id):
+def check_password(hash, token):
+    try:
+        if ph.verify(hash, token):
+            return True
+        return False
+    except:
+        return False
+
+class Session():
+    def __init__(self, uid, username, session_token, role_id):
         self.uid = uid
         self.username = username
+        self.session_token = session_token
         self.role_id = role_id
 
 class Database():
     def __init__(self, app, uri):
         self.engine = sa.create_engine(uri)
         self.logger = app.logger
+        self.sessions = {}
 
-        check_exists = """SELECT string_value FROM config WHERE field_name = 'db_schema_version';"""
+        # check_exists = """SELECT string_value FROM config WHERE field_name = 'db_schema_version';"""
 
         try:
             with self.engine.begin() as conn:
-                result = conn.exec_driver_sql(check_exists)
+                result = conn.exec_driver_sql(schema.check_exists)
                 self.logger.info("Existing database found, schema version " + result.fetchone()[0])
         except:
             self.logger.info("Database not initialized, creating tables")
             self.create_tables()
     
     def create_tables(self):
-        from backend.schema import tables, indices, init_values
+        # from backend.schema import tables, indices, init_values
         try:
             with self.engine.begin() as conn:
-                for table in tables:
+                for table in schema.tables:
                     conn.exec_driver_sql(table)
-                for index in indices:
+                for index in schema.indices:
                     conn.exec_driver_sql(index)
-                for init_val in init_values:
+                for init_val in schema.init_values:
                     conn.exec_driver_sql(init_val)
                 conn.commit()
         except:
@@ -51,7 +62,7 @@ class Database():
         timestamp = int(datetime.datetime.now().timestamp())
         expiration_time = timestamp + (expiration_period * 24 * 60 * 60)
 
-        new_user = """
+        '''new_user = """
             INSERT INTO api_users (
                 api_key,
                 issued_time,
@@ -61,11 +72,11 @@ class Database():
                 expiration_time
             ) VALUES
             (?, ?, ?, ?, ?, ?);
-        """
+        """'''
 
         #try:
         with self.engine.begin() as conn:
-            result = conn.exec(new_user, (unhashed_key, timestamp, False, expires, False, expiration_time))
+            result = conn.exec(schema.api_new_user, (unhashed_key, timestamp, False, expires, False, expiration_time))
             conn.commit()
         self.logger.info("API user registered")
         #except:
@@ -76,35 +87,35 @@ class Database():
     def create_web_user(self, username: str, password: str, role_id: int, enabled: bool):
         password_hash = ph.hash(password)
 
-        check_user = """
+        '''check_user = """
             SELECT username FROM web_users WHERE username = ?;
-        """
+        """'''
         
-        new_user = """
+        '''new_user = """
             INSERT INTO web_users (
                 username,
                 password_hash,
                 role_id,
                 enabled
             ) VALUES (?, ?, ?, ?);
-        """
+        """'''
 
         with self.engine.begin() as conn:
-            result = conn.exec_driver_sql(check_user, (username,))
+            result = conn.exec_driver_sql(schema.web_user_query, (username,))
             if result.fetchone():
                 return False
-            conn.exec_driver_sql(new_user, (username, password_hash, role_id, enabled))
+            conn.exec_driver_sql(schema.web_new_user, (username, password_hash, role_id, enabled))
             conn.commit()
         return True
 
     def authenticate(self, token):
 
-        user_query = """
+        '''user_query = """
             SELECT * FROM users WHERE
-        """
+        """'''
 
     def login(self, username: str, password: str, ip: str):
-        user_query = """
+        '''user_query = """
             SELECT * FROM web_users WHERE username = ?;
         """
         log_insert = """
@@ -114,18 +125,50 @@ class Database():
                 time,
                 ip_address
             ) VALUES (?, ?, ?, ?);
-        """
+        """'''
 
         try:
             with self.engine.begin() as conn:
-                result = conn.exec_driver_sql(user_query, (username,))
+                result = conn.exec_driver_sql(schema.web_user_query, (username,))
                 data = result.fetchone()
-                if data[4] and ph.verify(data[2], password):
-                    conn.exec_driver_sql(log_insert, (data[0], 1, int(datetime.now().timestamp() * 1000), ip))
+                if data is None:
+                    conn.exec_driver_sql(schema.web_log, (-1, 2, "Nonexistent Account", int(datetime.now().timestamp() * 1000), ip))
                     conn.commit()
-                    return User(data[0], data[1], data[3])
-
-                conn.exec_driver_sql(log_insert)
+                    return False
+                
+                if data[4] == 0:
+                    conn.exec_driver_sql(schema.web_log, (data[0], 2, "Account Disabled", int(datetime.now().timestamp() * 1000), ip))
+                    conn.commit()
+                    return False
+                
+                if check_password(data[2], password):
+                    conn.exec_driver_sql(schema.web_log, (data[0], 1, None, int(datetime.now().timestamp() * 1000), ip))
+                    conn.commit()
+                    token = base64.urlsafe_b64encode(secrets.token_bytes(36)).decode("ascii")
+                    session = Session(data[0], data[1], token, data[3])
+                    self.sessions[token] = session
+                    return session
+                
+                conn.exec_driver_sql(schema.web_log, (data[0], 2, "Wrong Password", int(datetime.now().timestamp() * 1000), ip))
+                conn.commit()
                 return False
         except:
+            with self.engine.begin() as conn:
+                conn.exec_driver_sql(schema.web_log, (-1, 2, "Server Error", int(datetime.now().timestamp() * 1000), ip))
+                conn.commit()
             return False
+    
+    def check_token(self, token: str):
+        if self.sessions.get(token) is not None:
+            return True
+        return False
+
+    def logout(self, token: str, ip):
+        session = self.sessions.get(token)
+        if session is not None:
+            del self.sessions[token]
+            with self.engine.begin() as conn:
+                conn.exec_driver_sql(schema.web_log, (session.uid, 3, None, int(datetime.now().timestamp() * 1000), ip))
+                conn.commit()
+            return True
+        return False

@@ -79,7 +79,7 @@ tables = [
     """
         CREATE TABLE IF NOT EXISTS web_events (
             event_id integer PRIMARY KEY,
-            uid integer REFERENCES web_users(uid) NOT NULL,
+            uid integer REFERENCES web_users(uid),
             type_id integer REFERENCES web_event_types(type_id) NOT NULL,
             message text,
             time bigint NOT NULL,
@@ -142,7 +142,8 @@ init_values = [
     """
         INSERT INTO web_event_types (label) VALUES
         ('login'),
-        ('failed_login');
+        ('failed_login'),
+        ('logout');
     """,
     """
         INSERT INTO roles (label) VALUES
@@ -161,3 +162,40 @@ init_values = [
         ('Users');
     """
 ]
+
+check_exists = """SELECT string_value FROM config WHERE field_name = 'db_schema_version';"""
+
+api_new_user = """
+            INSERT INTO api_users (
+                api_key,
+                issued_time,
+                revoked,
+                expires,
+                expired,
+                expiration_time
+            ) VALUES
+            (?, ?, ?, ?, ?, ?);
+        """
+
+web_user_query = """
+            SELECT * FROM web_users WHERE username = ?;
+        """
+
+web_new_user = """
+            INSERT INTO web_users (
+                username,
+                password_hash,
+                role_id,
+                enabled
+            ) VALUES (?, ?, ?, ?);
+        """
+
+web_log = """
+            INSERT INTO web_events (
+                uid,
+                type_id,
+                message,
+                time,
+                ip_address
+            ) VALUES (?, ?, ?, ?, ?);
+        """
