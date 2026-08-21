@@ -8,3 +8,4 @@ python-dotenv
 Flask-SocketIO
 Flask-CORS
 psycopg2-binary
+eventlet

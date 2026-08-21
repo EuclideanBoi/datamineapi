@@ -8,8 +8,8 @@ FlaskREST API for log aggregation and web portal
     openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
 
     # Launch with local SQLite DB  
-    venv/bin/gunicorn --certfile cert.pem --keyfile key.pem -b 0.0.0.0:8000 app.app
+    venv/bin/gunicorn --certfile cert.pem --keyfile key.pem --worker-class eventlet -b 0.0.0.0:8000 app.app
 
     # Launch with remote Postgres DB  
     export DATABASE_URL=postgresql://username:password@host/datamine  
-    venv/bin/gunicorn --certfile cert.pem --keyfile key.pem -b 0.0.0.0:8000 app.app
+    venv/bin/gunicorn --certfile cert.pem --keyfile key.pem --worker-class eventlet -b 0.0.0.0:8000 app.app

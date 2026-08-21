@@ -3,6 +3,7 @@ from flask_restful import Resource, Api
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from backend.db import Database
+from backend.web import web_blueprint
 from backend.api import api_blueprint
 from argon2 import PasswordHasher
 import time
@@ -12,7 +13,7 @@ import logging
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='./frontend', static_url_path='')
 
 if __name__ != '__main__':
     gunicorn_logger = logging.getLogger('gunicorn.error')
@@ -26,9 +27,12 @@ if db_uri == 'sqlite:///datamine.db':
     is_postgres = False
 db = Database(app, db_uri, is_postgres)
 app.register_blueprint(api_blueprint(db, app))
-socketio = SocketIO(cors_allowed_origins="*")
-CORS(app)
-socketio.init_app(app)
+app.register_blueprint(web_blueprint(app))
+socketio = SocketIO(app)
+# CORS(app)
+socketio.init_app(app, cors_allowed_origins="*")
+import backend.websocket
 
 if __name__ == "__main__":
     app.run(ssl_context=('cert.pem', 'key.pem'))
+    socketio.run(app)
