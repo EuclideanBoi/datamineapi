@@ -20,11 +20,15 @@ if __name__ != '__main__':
     app.logger.setLevel(gunicorn_logger.level)
 
 db_uri = os.getenv('DATABASE_URL', 'sqlite:///datamine.db')
-db = Database(app, db_uri)
+is_postgres = True
+if db_uri == 'sqlite:///datamine.db':
+    app.logger.info("No database URI specified, using local SQLite database")
+    is_postgres = False
+db = Database(app, db_uri, is_postgres)
 app.register_blueprint(api_blueprint(db, app))
 socketio = SocketIO(cors_allowed_origins="*")
 CORS(app)
 socketio.init_app(app)
 
 if __name__ == "__main__":
-    app.run(debug = True)
+    app.run(ssl_context=('cert.pem', 'key.pem'))

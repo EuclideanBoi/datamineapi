@@ -4,6 +4,10 @@
 # Data
 datamine.db
 
+# Encryption
+cert.pem
+key.pem
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/

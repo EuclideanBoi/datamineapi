@@ -1,32 +1,32 @@
 tables = [
     """
         CREATE TABLE IF NOT EXISTS config (
-            field_name VARCHAR(16) PRIMARY KEY,
+            field_name VARCHAR(32) PRIMARY KEY,
             int_value integer,
             string_value text
         );
     """,
     """
         CREATE TABLE IF NOT EXISTS lifecycle_event_types (
-            type_id integer PRIMARY KEY,
+            type_id integer{autoinc} PRIMARY KEY,
             label VARCHAR(16) NOT NULL
         );
     """,
     """
         CREATE TABLE IF NOT EXISTS web_event_types (
-            type_id integer PRIMARY KEY,
+            type_id integer{autoinc} PRIMARY KEY,
             label VARCHAR(16) NOT NULL
         );
     """,
     """
         CREATE TABLE IF NOT EXISTS player_event_types (
-            type_id integer PRIMARY KEY,
+            type_id integer{autoinc} PRIMARY KEY,
             label VARCHAR(16) NOT NULL
         );
     """,
     """
         CREATE TABLE IF NOT EXISTS roles (
-            role_id integer PRIMARY KEY,
+            role_id integer{autoinc} PRIMARY KEY,
             label VARCHAR(16) NOT NULL
         );
     """,
@@ -44,7 +44,7 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS web_users (
-            uid integer PRIMARY KEY,
+            uid integer{autoinc} PRIMARY KEY,
             username VARCHAR(32) UNIQUE NOT NULL,
             password_hash CHAR(97) NOT NULL,
             role_id integer REFERENCES roles(role_id) NOT NULL,
@@ -53,7 +53,7 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS resources (
-            action_id integer PRIMARY KEY,
+            action_id integer{autoinc} PRIMARY KEY,
             label VARCHAR(32) NOT NULL
         );
     """,
@@ -69,7 +69,7 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS lifecycle_events (
-            event_id integer PRIMARY KEY,
+            event_id integer{autoinc} PRIMARY KEY,
             uid integer REFERENCES api_users(uid) NOT NULL,
             type_id integer REFERENCES lifecycle_event_types(type_id) NOT NULL,
             time bigint NOT NULL,
@@ -78,7 +78,7 @@ tables = [
     """,
     """
         CREATE TABLE IF NOT EXISTS web_events (
-            event_id integer PRIMARY KEY,
+            event_id integer{autoinc} PRIMARY KEY,
             uid integer REFERENCES web_users(uid),
             type_id integer REFERENCES web_event_types(type_id) NOT NULL,
             message text,
@@ -95,7 +95,7 @@ tables = [
         CREATE TABLE IF NOT EXISTS player_events (
             event_id integer PRIMARY KEY,
             mc_uuid uuid REFERENCES players(mc_uuid) NOT NULL,
-            type_id REFERENCES player_event_types(type_id) NOT NULL,
+            type_id integer REFERENCES player_event_types(type_id) NOT NULL,
             username VARCHAR(16),
             time bigint NOT NULL,
             ip_address inet NOT NULL
@@ -174,11 +174,11 @@ api_new_user = """
                 expired,
                 expiration_time
             ) VALUES
-            (?, ?, ?, ?, ?, ?);
+            ({wc}, {wc}, {wc}, {wc}, {wc}, {wc});
         """
 
 web_user_query = """
-            SELECT * FROM web_users WHERE username = ?;
+            SELECT * FROM web_users WHERE username = ({wc});
         """
 
 web_new_user = """
@@ -187,7 +187,7 @@ web_new_user = """
                 password_hash,
                 role_id,
                 enabled
-            ) VALUES (?, ?, ?, ?);
+            ) VALUES ({wc}, {wc}, {wc}, {wc});
         """
 
 web_log = """
@@ -197,5 +197,5 @@ web_log = """
                 message,
                 time,
                 ip_address
-            ) VALUES (?, ?, ?, ?, ?);
+            ) VALUES ({wc}, {wc}, {wc}, {wc}, {wc});
         """

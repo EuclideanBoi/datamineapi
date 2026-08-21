@@ -2,7 +2,6 @@ import sqlalchemy as sa
 import backend.schema as schema
 from datetime import datetime
 from argon2 import PasswordHasher
-# from flask_login import UserMixin
 import base64
 import secrets
 
@@ -24,10 +23,16 @@ class Session():
         self.role_id = role_id
 
 class Database():
-    def __init__(self, app, uri):
+    def __init__(self, app, uri, is_postgres):
         self.engine = sa.create_engine(uri)
         self.logger = app.logger
         self.sessions = {}
+        if is_postgres:
+            self.autoincrement = " GENERATED ALWAYS AS IDENTITY"
+            self.wildcard = "%s"
+        else:
+            self.autoincrement = ""
+            self.wildcard = "?"
 
         # check_exists = """SELECT string_value FROM config WHERE field_name = 'db_schema_version';"""
 
@@ -44,7 +49,7 @@ class Database():
         try:
             with self.engine.begin() as conn:
                 for table in schema.tables:
-                    conn.exec_driver_sql(table)
+                    conn.exec_driver_sql(table.format(autoinc=self.autoincrement))
                 for index in schema.indices:
                     conn.exec_driver_sql(index)
                 for init_val in schema.init_values:
@@ -54,7 +59,7 @@ class Database():
             raise Exception("Database table creation error")
 
         self.logger.info("Database tables created")
-        self.logger.info("Creating admin user: " + ("Success" if self.create_web_user("admin", "password", 1, True) else "Failed"))
+        self.logger.info("Creating admin user: " + ("Success" if self.create_web_user('admin', 'password', 1, True) else "Failed"))
 
     def create_api_user(self, expires = False, expiration_period = 30):
         unhashed_key = base64.urlsafe_b64encode(secrets.token_bytes(36)).decode("ascii")
@@ -76,7 +81,7 @@ class Database():
 
         #try:
         with self.engine.begin() as conn:
-            result = conn.exec(schema.api_new_user, (unhashed_key, timestamp, False, expires, False, expiration_time))
+            result = conn.exec(schema.api_new_user.format(wc=self.wildcard), (unhashed_key, timestamp, False, expires, False, expiration_time))
             conn.commit()
         self.logger.info("API user registered")
         #except:
@@ -88,7 +93,7 @@ class Database():
         password_hash = ph.hash(password)
 
         '''check_user = """
-            SELECT username FROM web_users WHERE username = ?;
+            SELECT username FROM web_users WHERE username = (%s);
         """'''
         
         '''new_user = """
@@ -101,10 +106,10 @@ class Database():
         """'''
 
         with self.engine.begin() as conn:
-            result = conn.exec_driver_sql(schema.web_user_query, (username,))
+            result = conn.exec_driver_sql(schema.web_user_query.format(wc=self.wildcard), (username,))
             if result.fetchone():
                 return False
-            conn.exec_driver_sql(schema.web_new_user, (username, password_hash, role_id, enabled))
+            conn.exec_driver_sql(schema.web_new_user.format(wc=self.wildcard), (username, password_hash, role_id, enabled))
             conn.commit()
         return True
 
@@ -129,32 +134,32 @@ class Database():
 
         try:
             with self.engine.begin() as conn:
-                result = conn.exec_driver_sql(schema.web_user_query, (username,))
+                result = conn.exec_driver_sql(schema.web_user_query.format(wc=self.wildcard), (username,))
                 data = result.fetchone()
                 if data is None:
-                    conn.exec_driver_sql(schema.web_log, (-1, 2, "Nonexistent Account", int(datetime.now().timestamp() * 1000), ip))
+                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (-1, 2, "Nonexistent Account", int(datetime.now().timestamp() * 1000), ip))
                     conn.commit()
                     return False
                 
                 if data[4] == 0:
-                    conn.exec_driver_sql(schema.web_log, (data[0], 2, "Account Disabled", int(datetime.now().timestamp() * 1000), ip))
+                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 2, "Account Disabled", int(datetime.now().timestamp() * 1000), ip))
                     conn.commit()
                     return False
                 
                 if check_password(data[2], password):
-                    conn.exec_driver_sql(schema.web_log, (data[0], 1, None, int(datetime.now().timestamp() * 1000), ip))
+                    conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 1, None, int(datetime.now().timestamp() * 1000), ip))
                     conn.commit()
                     token = base64.urlsafe_b64encode(secrets.token_bytes(36)).decode("ascii")
                     session = Session(data[0], data[1], token, data[3])
                     self.sessions[token] = session
                     return session
                 
-                conn.exec_driver_sql(schema.web_log, (data[0], 2, "Wrong Password", int(datetime.now().timestamp() * 1000), ip))
+                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (data[0], 2, "Wrong Password", int(datetime.now().timestamp() * 1000), ip))
                 conn.commit()
                 return False
         except:
             with self.engine.begin() as conn:
-                conn.exec_driver_sql(schema.web_log, (-1, 2, "Server Error", int(datetime.now().timestamp() * 1000), ip))
+                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (-1, 2, "Server Error", int(datetime.now().timestamp() * 1000), ip))
                 conn.commit()
             return False
     
@@ -168,7 +173,7 @@ class Database():
         if session is not None:
             del self.sessions[token]
             with self.engine.begin() as conn:
-                conn.exec_driver_sql(schema.web_log, (session.uid, 3, None, int(datetime.now().timestamp() * 1000), ip))
+                conn.exec_driver_sql(schema.web_log.format(wc=self.wildcard), (session.uid, 3, None, int(datetime.now().timestamp() * 1000), ip))
                 conn.commit()
             return True
         return False
